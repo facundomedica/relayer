@@ -1433,6 +1433,14 @@ func (cc *CosmosProvider) AcknowledgementFromSequence(ctx context.Context, dst p
 		return nil, err
 	}
 
+	// Query the source chain to verify the packet exists there as well
+	packets, err := cc.QuerySendPacket(ctx, srcChanId, srcPortId, seq)
+	if err != nil {
+		return nil, err
+	}
+
+	msgRecvPacket.Data = packets.Data
+
 	pp, err := dst.PacketAcknowledgement(ctx, msgRecvPacket, dsth)
 	if err != nil {
 		return nil, err

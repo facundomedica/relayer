@@ -40,6 +40,7 @@ Most of these commands take a [path] argument. Make sure:
 		flushCmd(a),
 		relayMsgsCmd(a),
 		relayAcksCmd(a),
+		relayAckCmd(a),
 		xfersend(a),
 		lineBreakCommand(),
 		createClientsCmd(a),
@@ -1033,6 +1034,78 @@ $ %s tx relay-acks demo-path channel-0 -l 3 -s 6`,
 
 	cmd = strategyFlag(a.viper, cmd)
 	cmd = memoFlag(a.viper, cmd)
+	return cmd
+}
+
+func relayAckCmd(a *appState) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "manualrelay src_chain dst_chain src_channel",
+		Aliases: []string{"manualrelay"},
+		Short:   "relay acknowledgements for a given channel, manually with some changes in the code",
+		Args:    withUsage(cobra.ExactArgs(3)),
+		Example: strings.TrimSpace(fmt.Sprintf(`
+$ %s tx manualrelay ssc-1 axelar-dojo-1 channel-24
+`,
+			appName,
+		)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+
+			srcChainID := args[0]
+			dstChainID := args[1]
+			srcChanID := args[2]
+
+			// Get chain configurations
+			chains, err := a.config.Chains.Gets(srcChainID, dstChainID)
+			if err != nil {
+				return err
+			}
+
+			srcChain := chains[srcChainID]
+			dstChain := chains[dstChainID]
+
+			// get the channel on saga
+			// channel, err := relayer.QueryChannel(cmd.Context(), srcChain, srcChanID)
+			// if err != nil {
+			// 	return err
+			// }
+
+			chanResp, err := srcChain.ChainProvider.QueryChannel(cmd.Context(), 0, srcChanID, "transfer")
+			if err != nil {
+				return err
+			}
+			channel := &chantypes.IdentifiedChannel{
+				ChannelId: srcChanID,
+				PortId:    "transfer",
+				Counterparty: chantypes.Counterparty{
+					ChannelId: chanResp.Channel.Counterparty.ChannelId,
+					PortId:    chanResp.Channel.Counterparty.PortId,
+				},
+			}
+
+			relaySeqs := relayer.UnrelayedAcknowledgements(cmd.Context(), srcChain, dstChain, channel)
+
+			if relaySeqs.Empty() {
+				return fmt.Errorf("no unrelayed acknowledgements found")
+			}
+
+			fmt.Printf("seqs on src: %v\n", relaySeqs.Src)
+			fmt.Printf("seqs on dst: %v\n", relaySeqs.Dst)
+
+			ctx, cancel := context.WithTimeout(cmd.Context(), flushTimeout)
+			defer cancel()
+
+			ok := relayer.RelayAllUnrelayedAcks(ctx, a.log, srcChain, dstChain, relayer.TwoMB, relayer.DefaultMaxMsgLength, "saga", channel)
+			if !ok {
+				return fmt.Errorf("failed to relay all unrelayed acknowledgements")
+			}
+
+			return nil
+		},
+	}
+
+	cmd = strategyFlag(a.viper, cmd)
+	cmd = memoFlag(a.viper, cmd)
+
 	return cmd
 }
 

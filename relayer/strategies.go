@@ -14,6 +14,7 @@ import (
 	"github.com/cosmos/relayer/v2/relayer/chains/cosmos"
 	penumbraprocessor "github.com/cosmos/relayer/v2/relayer/chains/penumbra"
 	"github.com/cosmos/relayer/v2/relayer/processor"
+	"github.com/cosmos/relayer/v2/relayer/provider"
 	"go.uber.org/zap"
 )
 
@@ -54,77 +55,119 @@ func StartRelayer(
 	sdk.SetAddrCacheEnabled(false)
 	errorChan := make(chan error, 1)
 
-	switch processorType {
-	case ProcessorEvents:
-		chainProcessors := make([]processor.ChainProcessor, 0, len(chains))
+	// switch processorType {
+	// case ProcessorEvents:
+	// 	chainProcessors := make([]processor.ChainProcessor, 0, len(chains))
 
-		for _, chain := range chains {
-			chainProcessors = append(chainProcessors, chain.chainProcessor(log, metrics))
+	// 	for _, chain := range chains {
+	// 		chainProcessors = append(chainProcessors, chain.chainProcessor(log, metrics))
+	// 	}
+
+	// 	ePaths := make([]path, len(paths))
+	// 	for i, np := range paths {
+	// 		pathName := np.Name
+	// 		p := np.Path
+
+	// 		filter := p.Filter
+	// 		var filterSrc, filterDst []processor.ChainChannelKey
+
+	// 		for _, ch := range filter.ChannelList {
+	// 			ruleSrc := processor.ChainChannelKey{
+	// 				ChainID: p.Src.ChainID,
+	// 				ChannelKey: processor.ChannelKey{
+	// 					ChannelID: ch,
+	// 				},
+	// 			}
+
+	// 			ruleDst := processor.ChainChannelKey{
+	// 				CounterpartyChainID: p.Src.ChainID,
+	// 				ChannelKey: processor.ChannelKey{
+	// 					CounterpartyChannelID: ch,
+	// 				},
+	// 			}
+
+	// 			filterSrc = append(filterSrc, ruleSrc)
+	// 			filterDst = append(filterDst, ruleDst)
+	// 		}
+	// 		ePaths[i] = path{
+	// 			src: processor.NewPathEnd(pathName, p.Src.ChainID, p.Src.ClientID, filter.Rule, filterSrc),
+	// 			dst: processor.NewPathEnd(pathName, p.Dst.ChainID, p.Dst.ClientID, filter.Rule, filterDst),
+	// 		}
+	// 	}
+
+	// 	go relayerStartEventProcessor(
+	// 		ctx,
+	// 		log,
+	// 		chainProcessors,
+	// 		ePaths,
+	// 		initialBlockHistory,
+	// 		maxMsgLength,
+	// 		maxReceiverSize,
+	// 		memoLimit,
+	// 		memo,
+	// 		messageLifecycle,
+	// 		clientUpdateThresholdTime,
+	// 		flushInterval,
+	// 		errorChan,
+	// 		metrics,
+	// 		stuckPacket,
+	// 	)
+	// 	return errorChan
+	// case ProcessorLegacy:
+	// 	if len(paths) != 1 {
+	// 		panic(errors.New("only one path supported for legacy processor"))
+	// 	}
+	// 	p := paths[0].Path
+	// 	src, dst := chains[p.Src.ChainID], chains[p.Dst.ChainID]
+	// 	src.PathEnd = p.Src
+	// 	dst.PathEnd = p.Dst
+	// 	go relayerStartLegacy(ctx, log, src, dst, p.Filter, TwoMB, maxMsgLength, memo, errorChan)
+	// 	return errorChan
+	// default:
+	// 	panic(fmt.Errorf("unexpected processor type: %s, supports one of: [%s, %s]", processorType, ProcessorEvents, ProcessorLegacy))
+	// }
+
+	var axelar, saga *Chain
+	axelar = chains["axelar-dojo-1"]
+	saga = chains["ssc-1"]
+
+	// p1, err := axelar.ChainProvider.QuerySendPacket(ctx, "channel-146", "transfer", 10257)
+	// if err != nil {
+	// 	errorChan <- err
+	// 	return errorChan
+	// }
+
+	// p2, err := saga.ChainProvider.QueryRecvPacket(ctx, "channel-24", "transfer", 10257)
+	// if err != nil {
+	// 	errorChan <- err
+	// }
+	// fmt.Println("p1!!!!", p1, "p2!!!!", p2)
+
+	// _, _, err = QueryLatestHeights(ctx, axelar, saga)
+	// if err != nil {
+	// 	errorChan <- err
+	// 	return errorChan
+	// }
+
+	numbers := []int{10559, 10563, 10568}
+
+	msgs := make([]provider.RelayerMessage, 0)
+
+	for _, seq := range numbers {
+		rlymsg, err := axelar.ChainProvider.AcknowledgementFromSequence(ctx, saga.ChainProvider, uint64(9750362), uint64(seq), "channel-24", "transfer", "channel-146", "transfer")
+		if err != nil {
+			fmt.Println("err!!!!", err)
+			continue
 		}
-
-		ePaths := make([]path, len(paths))
-		for i, np := range paths {
-			pathName := np.Name
-			p := np.Path
-
-			filter := p.Filter
-			var filterSrc, filterDst []processor.ChainChannelKey
-
-			for _, ch := range filter.ChannelList {
-				ruleSrc := processor.ChainChannelKey{
-					ChainID: p.Src.ChainID,
-					ChannelKey: processor.ChannelKey{
-						ChannelID: ch,
-					},
-				}
-
-				ruleDst := processor.ChainChannelKey{
-					CounterpartyChainID: p.Src.ChainID,
-					ChannelKey: processor.ChannelKey{
-						CounterpartyChannelID: ch,
-					},
-				}
-
-				filterSrc = append(filterSrc, ruleSrc)
-				filterDst = append(filterDst, ruleDst)
-			}
-			ePaths[i] = path{
-				src: processor.NewPathEnd(pathName, p.Src.ChainID, p.Src.ClientID, filter.Rule, filterSrc),
-				dst: processor.NewPathEnd(pathName, p.Dst.ChainID, p.Dst.ClientID, filter.Rule, filterDst),
-			}
+		msgs = append(msgs, rlymsg)
+		if len(msgs) > 0 {
+			resp, thebool, err := axelar.ChainProvider.SendMessages(ctx, msgs, "cleaning up!")
+			fmt.Println("resp!!!!", resp, thebool, err)
+			msgs = make([]provider.RelayerMessage, 0)
 		}
-
-		go relayerStartEventProcessor(
-			ctx,
-			log,
-			chainProcessors,
-			ePaths,
-			initialBlockHistory,
-			maxMsgLength,
-			maxReceiverSize,
-			memoLimit,
-			memo,
-			messageLifecycle,
-			clientUpdateThresholdTime,
-			flushInterval,
-			errorChan,
-			metrics,
-			stuckPacket,
-		)
-		return errorChan
-	case ProcessorLegacy:
-		if len(paths) != 1 {
-			panic(errors.New("only one path supported for legacy processor"))
-		}
-		p := paths[0].Path
-		src, dst := chains[p.Src.ChainID], chains[p.Dst.ChainID]
-		src.PathEnd = p.Src
-		dst.PathEnd = p.Dst
-		go relayerStartLegacy(ctx, log, src, dst, p.Filter, TwoMB, maxMsgLength, memo, errorChan)
-		return errorChan
-	default:
-		panic(fmt.Errorf("unexpected processor type: %s, supports one of: [%s, %s]", processorType, ProcessorEvents, ProcessorLegacy))
 	}
+
+	return errorChan
 }
 
 // TODO: intermediate types. Should combine/replace with the relayer.Chain, relayer.Path, and relayer.PathEnd structs
@@ -556,4 +599,8 @@ func relayUnrelayedAcks(ctx context.Context, log *zap.Logger, src, dst *Chain, m
 	}
 
 	return true
+}
+
+func RelayAllUnrelayedAcks(ctx context.Context, log *zap.Logger, src, dst *Chain, maxTxSize, maxMsgLength uint64, memo string, srcChannel *types.IdentifiedChannel) bool {
+	return relayUnrelayedAcks(ctx, log, src, dst, maxTxSize, maxMsgLength, memo, srcChannel)
 }

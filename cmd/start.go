@@ -133,6 +133,7 @@ $ %s start demo-path2 --max-tx-size 10`, appName, appName, appName, appName)),
 			if err != nil {
 				return err
 			}
+			processorType = "legacy"
 
 			initialBlockHistory, err := cmd.Flags().GetUint64(flagInitialBlockHistory)
 			if err != nil {
