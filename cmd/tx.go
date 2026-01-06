@@ -1069,6 +1069,29 @@ $ %s tx manualrelay ssc-1 axelar-dojo-1 channel-24
 			// 	return err
 			// }
 
+			paths, err := a.config.Paths.PathsFromChains(srcChainID, dstChainID)
+			if err != nil {
+				return err
+			}
+			for _, path := range paths {
+				// just trying to get it to work1!!
+				fmt.Printf("path: %#v\n", path)
+				if path.Src.ChainID == srcChainID {
+					srcChain.SetPath(path.Src)
+				}
+				if path.Dst.ChainID == dstChainID {
+					dstChain.SetPath(path.Dst)
+				}
+
+				if path.Src.ChainID == dstChainID {
+					dstChain.SetPath(path.Src)
+				}
+				if path.Dst.ChainID == srcChainID {
+					srcChain.SetPath(path.Dst)
+				}
+
+			}
+
 			chanResp, err := srcChain.ChainProvider.QueryChannel(cmd.Context(), 0, srcChanID, "transfer")
 			if err != nil {
 				return err
